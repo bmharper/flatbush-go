@@ -16,7 +16,7 @@ type Flatbush64 struct {
 	numItems      int
 }
 
-func NewFlatbush() *Flatbush64 {
+func NewFlatbush64() *Flatbush64 {
 	return &Flatbush64{
 		NodeSize: 16,
 		bounds:   InvertedBox(),

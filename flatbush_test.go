@@ -10,13 +10,13 @@ import (
 )
 
 func TestEmpty(t *testing.T) {
-	f := NewFlatbush()
+	f := NewFlatbush64()
 	f.Finish()
 	require.Equal(t, 0, len(f.Search(0, 0, 1, 1)))
 }
 
 func TestBasic(t *testing.T) {
-	f := NewFlatbush()
+	f := NewFlatbush64()
 	boxes := []Box64{}
 	dim := 100
 	f.Reserve(int(dim * dim))
@@ -89,7 +89,7 @@ func fillSquare(f *Flatbush64, sideLength int) {
 func BenchmarkInsert(b *testing.B) {
 	dim := 1000
 	start := time.Now()
-	f := NewFlatbush()
+	f := NewFlatbush64()
 	fillSquare(f, dim)
 	end := time.Now()
 	b.Logf("Time to insert %v elements: %.0f milliseconds", dim*dim, end.Sub(start).Seconds()*1000)
@@ -97,7 +97,7 @@ func BenchmarkInsert(b *testing.B) {
 
 func BenchmarkQuery(b *testing.B) {
 	dim := 1000
-	f := NewFlatbush()
+	f := NewFlatbush64()
 	fillSquare(f, dim)
 
 	start := time.Now()
