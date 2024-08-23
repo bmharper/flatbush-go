@@ -2,26 +2,6 @@ package flatbush
 
 import "math"
 
-type Flatbush[TFloat float32 | float64] interface {
-	Reserve(size int)
-	Add(minX, minY, maxX, maxY TFloat) int
-	Finish()
-	Search(minX, minY, maxX, maxY TFloat) []int
-	SearchFast(minX, minY, maxX, maxY TFloat, results []int) []int
-}
-
-func NewFlatbush[T float32 | float64]() Flatbush[T] {
-	var t T
-	switch any(t).(type) {
-	case float32:
-		return any(NewFlatbush32()).(Flatbush[T])
-	case float64:
-		return any(NewFlatbush64()).(Flatbush[T])
-	default:
-		panic("Unsupported float type")
-	}
-}
-
 type Box[Float float32 | float64] struct {
 	MinX  Float
 	MinY  Float

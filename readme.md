@@ -5,8 +5,8 @@ This is a Go port of https://github.com/mourner/flatbush.
 # Usage
 
 ```go
-// Create a new flatbush spatial index
-f := flatbush.NewFlatbush64()
+// Create a new flatbush spatial index (must be either float32 or float64)
+f := flatbush.NewFlatbush[float64]()
 
 // Populate the tree
 for _, b := range boxes {

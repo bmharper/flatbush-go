@@ -85,7 +85,7 @@ func testBasic[TFloat float32 | float64](t *testing.T) {
 	require.Less(t, totalResults, (maxQueryWindow+3)*(maxQueryWindow+3)*nSamples) // +3 is just padding
 }
 
-func fillSquare[TFloat float32 | float64](f Flatbush[TFloat], sideLength int) {
+func fillSquare[TFloat float32 | float64](f *Flatbush[TFloat], sideLength int) {
 	f.Reserve(int(sideLength * sideLength))
 	for x := TFloat(0); x < TFloat(sideLength); x++ {
 		for y := TFloat(0); y < TFloat(sideLength); y++ {
