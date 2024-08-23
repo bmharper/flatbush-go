@@ -1,5 +1,71 @@
 package flatbush
 
+import "math"
+
+type Flatbush[TFloat float32 | float64] interface {
+	Reserve(size int)
+	Add(minX, minY, maxX, maxY TFloat) int
+	Finish()
+	Search(minX, minY, maxX, maxY TFloat) []int
+	SearchFast(minX, minY, maxX, maxY TFloat, results []int) []int
+}
+
+func NewFlatbush[T float32 | float64]() Flatbush[T] {
+	var t T
+	switch any(t).(type) {
+	case float32:
+		return any(NewFlatbush32()).(Flatbush[T])
+	case float64:
+		return any(NewFlatbush64()).(Flatbush[T])
+	default:
+		panic("Unsupported float type")
+	}
+}
+
+type Box[Float float32 | float64] struct {
+	MinX  Float
+	MinY  Float
+	MaxX  Float
+	MaxY  Float
+	Index int
+}
+
+func InvertedBox32() Box[float32] {
+	return Box[float32]{
+		MinX:  math.MaxFloat32,
+		MinY:  math.MaxFloat32,
+		MaxX:  -math.MaxFloat32,
+		MaxY:  -math.MaxFloat32,
+		Index: -1,
+	}
+}
+
+func InvertedBox64() Box[float64] {
+	return Box[float64]{
+		MinX:  math.MaxFloat64,
+		MinY:  math.MaxFloat64,
+		MaxX:  -math.MaxFloat64,
+		MaxY:  -math.MaxFloat64,
+		Index: -1,
+	}
+}
+
+func InvertedBox[T float32 | float64]() Box[T] {
+	var t T
+	switch any(t).(type) {
+	case float32:
+		return any(InvertedBox32()).(Box[T])
+	case float64:
+		return any(InvertedBox64()).(Box[T])
+	default:
+		panic("Unsupported float type")
+	}
+}
+
+func (a *Box[float32]) PositiveUnion(b *Box[float32]) bool {
+	return b.MaxX >= a.MinX && b.MinX <= a.MaxX && b.MaxY >= a.MinY && b.MinY <= a.MaxY
+}
+
 func hilbertXYToIndex(n uint32, x uint32, y uint32) uint32 {
 	x = x << (16 - n)
 	y = y << (16 - n)
@@ -78,7 +144,7 @@ func interleave(x uint32) uint32 {
 }
 
 // custom quicksort that sorts bbox data alongside the hilbert values
-func sortValuesAndBoxes[TBox Box32 | Box64](values []uint32, boxes []TBox, left, right int) {
+func sortValuesAndBoxes[TBox any](values []uint32, boxes []TBox, left, right int) {
 	if left >= right {
 		return
 	}
@@ -107,10 +173,78 @@ func sortValuesAndBoxes[TBox Box32 | Box64](values []uint32, boxes []TBox, left,
 	sortValuesAndBoxes(values, boxes, j+1, right)
 }
 
-/*
+// Finish builds the spatial index, so that it can be queried.
+func finishIndexBuild[TFloat float32 | float64](nodeSize int, boxes []Box[TFloat], bounds Box[TFloat]) (int, []int, []uint32, []Box[TFloat]) {
+	if nodeSize < 2 {
+		nodeSize = 2
+	}
+
+	numItems := len(boxes)
+
+	// calculate the total number of nodes in the R-tree to allocate space for
+	// and the index of each tree level (used in search later)
+	n := numItems
+	numNodes := n
+	levelBounds := []int{n}
+	for {
+		n = (n + nodeSize - 1) / nodeSize
+		numNodes += n
+		levelBounds = append(levelBounds, numNodes)
+		if n <= 1 {
+			break
+		}
+	}
+
+	width := bounds.MaxX - bounds.MinX
+	height := bounds.MaxY - bounds.MinY
+
+	hilbertValues := make([]uint32, len(boxes))
+	hilbertMax := TFloat((1 << 16) - 1)
+
+	// map item centers into Hilbert coordinate space and calculate Hilbert values
+	for i := 0; i < len(boxes); i++ {
+		b := boxes[i]
+		x := uint32(hilbertMax * ((b.MinX+b.MaxX)/2 - bounds.MinX) / width)
+		y := uint32(hilbertMax * ((b.MinY+b.MaxY)/2 - bounds.MinY) / height)
+		hilbertValues[i] = hilbertXYToIndex(16, x, y)
+	}
+
+	// sort items by their Hilbert value (for packing later)
+	if len(boxes) != 0 {
+		sortValuesAndBoxes(hilbertValues, boxes, 0, len(boxes)-1)
+	}
+
+	// generate nodes at each tree level, bottom-up
+	pos := 0
+	for i := 0; i < len(levelBounds)-1; i++ {
+		end := levelBounds[i]
+
+		// generate a parent node for each block of consecutive <nodeSize> nodes
+		for pos < end {
+			nodeBox := InvertedBox[TFloat]()
+			nodeBox.Index = pos
+
+			// calculate bbox for the new node
+			for j := 0; j < nodeSize && pos < end; j++ {
+				box := boxes[pos]
+				pos++
+				nodeBox.MinX = min(nodeBox.MinX, box.MinX)
+				nodeBox.MinY = min(nodeBox.MinY, box.MinY)
+				nodeBox.MaxX = max(nodeBox.MaxX, box.MaxX)
+				nodeBox.MaxY = max(nodeBox.MaxY, box.MaxY)
+			}
+
+			// add the new node to the tree data
+			boxes = append(boxes, nodeBox)
+		}
+	}
+
+	return nodeSize, levelBounds, hilbertValues, boxes
+}
+
 // searchInTree accepts a 'results' as input. If you are performing millions of queries,
 // then reusing a 'results' slice will reduce the number of allocations.
-func searchInTree[TFloat float32 | float64, TBox Box32 | Box64](levelBounds []int, boxes []TBox, minX, minY, maxX, maxY TFloat, results []int) []int {
+func searchInTree[TFloat float32 | float64](nodeSize, numItems int, levelBounds []int, boxes []Box[TFloat], minX, minY, maxX, maxY TFloat, results []int) []int {
 	results = results[:0]
 	if len(levelBounds) == 0 {
 		// Must call Finish()
@@ -131,7 +265,7 @@ func searchInTree[TFloat float32 | float64, TBox Box32 | Box64](levelBounds []in
 		queue = queue[:len(queue)-2]
 
 		// find the end index of the node
-		end := min(nodeIndex+f.NodeSize, levelBounds[level])
+		end := min(nodeIndex+nodeSize, levelBounds[level])
 
 		// search through child nodes
 		for pos := nodeIndex; pos < end; pos++ {
@@ -142,7 +276,7 @@ func searchInTree[TFloat float32 | float64, TBox Box32 | Box64](levelBounds []in
 				minY > boxes[pos].MaxY {
 				continue
 			}
-			if nodeIndex < f.numItems {
+			if nodeIndex < numItems {
 				// leaf item
 				results = append(results, boxes[pos].Index)
 			} else {
@@ -154,4 +288,3 @@ func searchInTree[TFloat float32 | float64, TBox Box32 | Box64](levelBounds []in
 	}
 	return results
 }
-*/

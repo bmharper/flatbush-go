@@ -1,30 +1,39 @@
 package flatbush
 
 import (
+	"math/rand"
 	"testing"
 	"time"
-
-	"math/rand"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestEmpty(t *testing.T) {
-	f := NewFlatbush64()
+	testEmpty[float32](t)
+	testEmpty[float64](t)
+}
+
+func testEmpty[TFloat float32 | float64](t *testing.T) {
+	f := NewFlatbush[TFloat]()
 	f.Finish()
 	require.Equal(t, 0, len(f.Search(0, 0, 1, 1)))
 }
 
 func TestBasic(t *testing.T) {
-	f := NewFlatbush64()
-	boxes := []Box64{}
+	testBasic[float32](t)
+	testBasic[float64](t)
+}
+
+func testBasic[TFloat float32 | float64](t *testing.T) {
+	f := NewFlatbush[TFloat]()
+	boxes := []Box[TFloat]{}
 	dim := 100
 	f.Reserve(int(dim * dim))
 	index := 0
-	for x := float64(0); x < float64(dim); x++ {
-		for y := float64(0); y < float64(dim); y++ {
+	for x := TFloat(0); x < TFloat(dim); x++ {
+		for y := TFloat(0); y < TFloat(dim); y++ {
 			// boxes.push_back({index, x + 0.1f, y + 0.1f, x + 0.9f, y + 0.9f});
-			boxes = append(boxes, Box64{
+			boxes = append(boxes, Box[TFloat]{
 				MinX:  x + 0.1,
 				MinY:  y + 0.1,
 				MaxX:  x + 0.9,
@@ -43,16 +52,16 @@ func TestBasic(t *testing.T) {
 	totalResults := 0
 	nSamples := 1000
 	maxQueryWindow := 5
-	pad := float64(3)
+	pad := TFloat(3)
 	for i := 0; i < nSamples; i++ {
-		minx := rng.Float64()*float64(dim) - pad
-		miny := rng.Float64()*float64(dim) - pad
-		maxx := minx + rng.Float64()*float64(maxQueryWindow)
-		maxy := miny + rng.Float64()*float64(maxQueryWindow)
+		minx := TFloat(rng.Float32())*TFloat(dim) - pad
+		miny := TFloat(rng.Float32())*TFloat(dim) - pad
+		maxx := minx + TFloat(rng.Float32())*TFloat(maxQueryWindow)
+		maxy := miny + TFloat(rng.Float32())*TFloat(maxQueryWindow)
 		results := f.Search(minx, miny, maxx, maxy)
 		totalResults += len(results)
 		// brute force validation that there are no false negatives
-		qbox := Box64{
+		qbox := Box[TFloat]{
 			MinX: minx,
 			MinY: miny,
 			MaxX: maxx,
@@ -76,28 +85,44 @@ func TestBasic(t *testing.T) {
 	require.Less(t, totalResults, (maxQueryWindow+3)*(maxQueryWindow+3)*nSamples) // +3 is just padding
 }
 
-func fillSquare(f *Flatbush64, sideLength int) {
+func fillSquare[TFloat float32 | float64](f Flatbush[TFloat], sideLength int) {
 	f.Reserve(int(sideLength * sideLength))
-	for x := float64(0); x < float64(sideLength); x++ {
-		for y := float64(0); y < float64(sideLength); y++ {
+	for x := TFloat(0); x < TFloat(sideLength); x++ {
+		for y := TFloat(0); y < TFloat(sideLength); y++ {
 			f.Add(x+0.1, y+0.1, x+0.9, y+0.9)
 		}
 	}
 	f.Finish()
 }
 
-func BenchmarkInsert(b *testing.B) {
+func BenchmarkInsert32(b *testing.B) {
+	benchmarkInsert[float32](b)
+}
+
+func BenchmarkInsert64(b *testing.B) {
+	benchmarkInsert[float64](b)
+}
+
+func benchmarkInsert[TFloat float32 | float64](b *testing.B) {
 	dim := 1000
 	start := time.Now()
-	f := NewFlatbush64()
+	f := NewFlatbush[TFloat]()
 	fillSquare(f, dim)
 	end := time.Now()
 	b.Logf("Time to insert %v elements: %.0f milliseconds", dim*dim, end.Sub(start).Seconds()*1000)
 }
 
-func BenchmarkQuery(b *testing.B) {
+func BenchmarkQuery32(b *testing.B) {
+	benchmarkQuery[float32](b)
+}
+
+func BenchmarkQuery64(b *testing.B) {
+	benchmarkQuery[float64](b)
+}
+
+func benchmarkQuery[TFloat float32 | float64](b *testing.B) {
 	dim := 1000
-	f := NewFlatbush64()
+	f := NewFlatbush[TFloat]()
 	fillSquare(f, dim)
 
 	start := time.Now()
@@ -107,10 +132,10 @@ func BenchmarkQuery(b *testing.B) {
 	results := []int{}
 	nresults := 0
 	for i := 0; i < nquery; i++ {
-		minx := float64(sx % dim)
-		miny := float64(sy % dim)
-		maxx := float64(minx + 5.0)
-		maxy := float64(miny + 5.0)
+		minx := TFloat(sx % dim)
+		miny := TFloat(sy % dim)
+		maxx := TFloat(minx + 5.0)
+		maxy := TFloat(miny + 5.0)
 		results = f.SearchFast(minx, miny, maxx, maxy, results)
 		nresults += len(results)
 		sx++
