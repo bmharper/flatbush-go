@@ -19,7 +19,7 @@ type Flatbush64 struct {
 func NewFlatbush64() *Flatbush64 {
 	return &Flatbush64{
 		NodeSize: 16,
-		bounds:   InvertedBox(),
+		bounds:   InvertedBox64(),
 	}
 }
 
@@ -46,10 +46,10 @@ func (f *Flatbush64) Add(minX, minY, maxX, maxY float64) int {
 		MaxY:  maxY,
 		Index: index,
 	})
-	f.bounds.MinX = math.Min(f.bounds.MinX, minX)
-	f.bounds.MinY = math.Min(f.bounds.MinY, minY)
-	f.bounds.MaxX = math.Max(f.bounds.MaxX, maxX)
-	f.bounds.MaxY = math.Max(f.bounds.MaxY, maxY)
+	f.bounds.MinX = min(f.bounds.MinX, minX)
+	f.bounds.MinY = min(f.bounds.MinY, minY)
+	f.bounds.MaxX = max(f.bounds.MaxX, maxX)
+	f.bounds.MaxY = max(f.bounds.MaxY, maxY)
 	return index
 }
 
@@ -91,7 +91,7 @@ func (f *Flatbush64) Finish() {
 
 	// sort items by their Hilbert value (for packing later)
 	if len(f.boxes) != 0 {
-		sort(f.hilbertValues, f.boxes, 0, len(f.boxes)-1)
+		sortValuesAndBoxes(f.hilbertValues, f.boxes, 0, len(f.boxes)-1)
 	}
 
 	// generate nodes at each tree level, bottom-up
@@ -101,30 +101,23 @@ func (f *Flatbush64) Finish() {
 
 		// generate a parent node for each block of consecutive <nodeSize> nodes
 		for pos < end {
-			nodeBox := InvertedBox()
+			nodeBox := InvertedBox64()
 			nodeBox.Index = pos
 
 			// calculate bbox for the new node
 			for j := 0; j < f.NodeSize && pos < end; j++ {
 				box := f.boxes[pos]
 				pos++
-				nodeBox.MinX = math.Min(nodeBox.MinX, box.MinX)
-				nodeBox.MinY = math.Min(nodeBox.MinY, box.MinY)
-				nodeBox.MaxX = math.Max(nodeBox.MaxX, box.MaxX)
-				nodeBox.MaxY = math.Max(nodeBox.MaxY, box.MaxY)
+				nodeBox.MinX = min(nodeBox.MinX, box.MinX)
+				nodeBox.MinY = min(nodeBox.MinY, box.MinY)
+				nodeBox.MaxX = max(nodeBox.MaxX, box.MaxX)
+				nodeBox.MaxY = max(nodeBox.MaxY, box.MaxY)
 			}
 
 			// add the new node to the tree data
 			f.boxes = append(f.boxes, nodeBox)
 		}
 	}
-}
-
-func intMin(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // Search for all boxes that overlap the given query box.
@@ -156,7 +149,7 @@ func (f *Flatbush64) SearchFast(minX, minY, maxX, maxY float64, results []int) [
 		queue = queue[:len(queue)-2]
 
 		// find the end index of the node
-		end := intMin(nodeIndex+f.NodeSize, f.levelBounds[level])
+		end := min(nodeIndex+f.NodeSize, f.levelBounds[level])
 
 		// search through child nodes
 		for pos := nodeIndex; pos < end; pos++ {
@@ -180,36 +173,6 @@ func (f *Flatbush64) SearchFast(minX, minY, maxX, maxY float64, results []int) [
 	return results
 }
 
-// custom quicksort that sorts bbox data alongside the hilbert values
-func sort(values []uint32, boxes []Box64, left, right int) {
-	if left >= right {
-		return
-	}
-
-	pivot := values[(left+right)>>1]
-	i := left - 1
-	j := right + 1
-
-	for {
-		i++
-		for values[i] < pivot {
-			i++
-		}
-		j--
-		for values[j] > pivot {
-			j--
-		}
-		if i >= j {
-			break
-		}
-		values[i], values[j] = values[j], values[i]
-		boxes[i], boxes[j] = boxes[j], boxes[i]
-	}
-
-	sort(values, boxes, left, j)
-	sort(values, boxes, j+1, right)
-}
-
 type Box64 struct {
 	MinX  float64
 	MinY  float64
@@ -218,7 +181,7 @@ type Box64 struct {
 	Index int
 }
 
-func InvertedBox() Box64 {
+func InvertedBox64() Box64 {
 	return Box64{
 		MinX:  math.MaxFloat64,
 		MinY:  math.MaxFloat64,
@@ -230,81 +193,4 @@ func InvertedBox() Box64 {
 
 func (a *Box64) PositiveUnion(b *Box64) bool {
 	return b.MaxX >= a.MinX && b.MinX <= a.MaxX && b.MaxY >= a.MinY && b.MinY <= a.MaxY
-}
-
-func hilbertXYToIndex(n uint32, x uint32, y uint32) uint32 {
-	x = x << (16 - n)
-	y = y << (16 - n)
-
-	var A, B, C, D uint32
-
-	// Initial prefix scan round, prime with x and y
-	{
-		a := uint32(x ^ y)
-		b := uint32(0xFFFF ^ a)
-		c := uint32(0xFFFF ^ (x | y))
-		d := uint32(x & (y ^ 0xFFFF))
-
-		A = a | (b >> 1)
-		B = (a >> 1) ^ a
-
-		C = ((c >> 1) ^ (b & (d >> 1))) ^ c
-		D = ((a & (c >> 1)) ^ (d >> 1)) ^ d
-	}
-
-	{
-		a := A
-		b := B
-		c := C
-		d := D
-
-		A = ((a & (a >> 2)) ^ (b & (b >> 2)))
-		B = ((a & (b >> 2)) ^ (b & ((a ^ b) >> 2)))
-
-		C ^= ((a & (c >> 2)) ^ (b & (d >> 2)))
-		D ^= ((b & (c >> 2)) ^ ((a ^ b) & (d >> 2)))
-	}
-
-	{
-		a := A
-		b := B
-		c := C
-		d := D
-
-		A = ((a & (a >> 4)) ^ (b & (b >> 4)))
-		B = ((a & (b >> 4)) ^ (b & ((a ^ b) >> 4)))
-
-		C ^= ((a & (c >> 4)) ^ (b & (d >> 4)))
-		D ^= ((b & (c >> 4)) ^ ((a ^ b) & (d >> 4)))
-	}
-
-	// Final round and projection
-	{
-		a := A
-		b := B
-		c := C
-		d := D
-
-		C ^= ((a & (c >> 8)) ^ (b & (d >> 8)))
-		D ^= ((b & (c >> 8)) ^ ((a ^ b) & (d >> 8)))
-	}
-
-	// Undo transformation prefix scan
-	a := uint32(C ^ (C >> 1))
-	b := uint32(D ^ (D >> 1))
-
-	// Recover index bits
-	i0 := uint32(x ^ y)
-	i1 := uint32(b | (0xFFFF ^ (i0 | a)))
-
-	return ((interleave(i1) << 1) | interleave(i0)) >> (32 - 2*n)
-}
-
-// From https://github.com/rawrunprotected/hilbert_curves (public domain)
-func interleave(x uint32) uint32 {
-	x = (x | (x << 8)) & 0x00FF00FF
-	x = (x | (x << 4)) & 0x0F0F0F0F
-	x = (x | (x << 2)) & 0x33333333
-	x = (x | (x << 1)) & 0x55555555
-	return x
 }
