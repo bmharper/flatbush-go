@@ -11,32 +11,38 @@ import (
 
 func TestGenericSpecialization(t *testing.T) {
 	{
-		a, b := MinMaxValueOfType[int8]()
+		var a, b int8
+		MinMaxValueOfType[int8](&a, &b)
 		require.Equal(t, int8(math.MinInt8), a)
 		require.Equal(t, int8(math.MaxInt8), b)
 	}
 	{
-		a, b := MinMaxValueOfType[int16]()
+		var a, b int16
+		MinMaxValueOfType[int16](&a, &b)
 		require.Equal(t, int16(math.MinInt16), a)
 		require.Equal(t, int16(math.MaxInt16), b)
 	}
 	{
-		a, b := MinMaxValueOfType[int32]()
+		var a, b int32
+		MinMaxValueOfType[int32](&a, &b)
 		require.Equal(t, int32(math.MinInt32), a)
 		require.Equal(t, int32(math.MaxInt32), b)
 	}
 	{
-		a, b := MinMaxValueOfType[int64]()
+		var a, b int64
+		MinMaxValueOfType[int64](&a, &b)
 		require.Equal(t, int64(math.MinInt64), a)
 		require.Equal(t, int64(math.MaxInt64), b)
 	}
 	{
-		a, b := MinMaxValueOfType[float32]()
+		var a, b float32
+		MinMaxValueOfType[float32](&a, &b)
 		require.Equal(t, -float32(math.MaxFloat32), a)
 		require.Equal(t, float32(math.MaxFloat32), b)
 	}
 	{
-		a, b := MinMaxValueOfType[float64]()
+		var a, b float64
+		MinMaxValueOfType[float64](&a, &b)
 		require.Equal(t, -float64(math.MaxFloat64), a)
 		require.Equal(t, float64(math.MaxFloat64), b)
 	}

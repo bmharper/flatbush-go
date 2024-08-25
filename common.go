@@ -7,22 +7,65 @@ type Coord interface {
 	int8 | int16 | int32 | int64 | float32 | float64
 }
 
+// This method of using structs was a workaround for a bug in the Go 1.22 compiler/linker.
+type MinMaxInt8 struct {
+	Min int8
+	Max int8
+}
+
+type MinMaxInt16 struct {
+	Min int16
+	Max int16
+}
+
+type MinMaxInt32 struct {
+	Min int32
+	Max int32
+}
+
+type MinMaxInt64 struct {
+	Min int64
+	Max int64
+}
+
+type MinMaxFloat32 struct {
+	Min float32
+	Max float32
+}
+
+type MinMaxFloat64 struct {
+	Min float64
+	Max float64
+}
+
 // MinMaxValueOfType returns the minimum and maximum value for the given numeric type T.
-func MinMaxValueOfType[T Coord]() (min, max T) {
+func MinMaxValueOfType[T Coord](min, max *T) {
 	// Use type assertion to determine the type of T
-	switch any(min).(type) {
+	switch any(*min).(type) {
 	case int8:
-		return math.MinInt8, math.MaxInt8
+		mm := MinMaxInt8{Min: math.MinInt8, Max: math.MaxInt8}
+		*min = any(mm.Min).(T)
+		*max = any(mm.Max).(T)
 	case int16:
-		return any(int16(math.MinInt16)).(T), any(int16(math.MaxInt16)).(T)
+		mm := MinMaxInt16{Min: math.MinInt16, Max: math.MaxInt16}
+		*min = any(mm.Min).(T)
+		*max = any(mm.Max).(T)
 	case int32:
-		return any(int32(math.MinInt32)).(T), any(int32(math.MaxInt32)).(T)
+		mm := MinMaxInt32{Min: math.MinInt32, Max: math.MaxInt32}
+		*min = any(mm.Min).(T)
+		*max = any(mm.Max).(T)
 	case int64:
-		return any(int64(math.MinInt64)).(T), any(int64(math.MaxInt64)).(T)
+		mm := MinMaxInt64{Min: math.MinInt64, Max: math.MaxInt64}
+		*min = any(mm.Min).(T)
+		*max = any(mm.Max).(T)
 	case float32:
-		return any(float32(-math.MaxFloat32)).(T), any(float32(math.MaxFloat32)).(T)
+		mm := MinMaxFloat32{Min: -math.MaxFloat32, Max: math.MaxFloat32}
+		*min = any(mm.Min).(T)
+		*max = any(mm.Max).(T)
 	case float64:
-		return any(float64(-math.MaxFloat64)).(T), any(float64(math.MaxFloat64)).(T)
+		mm := MinMaxFloat64{Min: -math.MaxFloat64, Max: math.MaxFloat64}
+		*min = any(mm.Min).(T)
+		*max = any(mm.Max).(T)
 	default:
 		// This panic should never be reached due to the Numeric constraint
 		panic("Unsupported type")
@@ -38,7 +81,8 @@ type Box[T Coord] struct {
 }
 
 func InvertedBox[T Coord]() Box[T] {
-	min, max := MinMaxValueOfType[T]()
+	var min, max T
+	MinMaxValueOfType[T](&min, &max)
 	return Box[T]{MinX: max, MinY: max, MaxX: min, MaxY: min, Index: -1}
 }
 
