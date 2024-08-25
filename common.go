@@ -2,47 +2,47 @@ package flatbush
 
 import "math"
 
-type Box[Float float32 | float64] struct {
-	MinX  Float
-	MinY  Float
-	MaxX  Float
-	MaxY  Float
+// Define a type constraint for all numeric types we're interested in
+type Coord interface {
+	int8 | int16 | int32 | int64 | float32 | float64
+}
+
+// MinMaxValueOfType returns the minimum and maximum value for the given numeric type T.
+func MinMaxValueOfType[T Coord]() (min, max T) {
+	// Use type assertion to determine the type of T
+	switch any(min).(type) {
+	case int8:
+		return math.MinInt8, math.MaxInt8
+	case int16:
+		return any(int16(math.MinInt16)).(T), any(int16(math.MaxInt16)).(T)
+	case int32:
+		return any(int32(math.MinInt32)).(T), any(int32(math.MaxInt32)).(T)
+	case int64:
+		return any(int64(math.MinInt64)).(T), any(int64(math.MaxInt64)).(T)
+	case float32:
+		return any(float32(-math.MaxFloat32)).(T), any(float32(math.MaxFloat32)).(T)
+	case float64:
+		return any(float64(-math.MaxFloat64)).(T), any(float64(math.MaxFloat64)).(T)
+	default:
+		// This panic should never be reached due to the Numeric constraint
+		panic("Unsupported type")
+	}
+}
+
+type Box[T Coord] struct {
+	MinX  T
+	MinY  T
+	MaxX  T
+	MaxY  T
 	Index int
 }
 
-func InvertedBox32() Box[float32] {
-	return Box[float32]{
-		MinX:  math.MaxFloat32,
-		MinY:  math.MaxFloat32,
-		MaxX:  -math.MaxFloat32,
-		MaxY:  -math.MaxFloat32,
-		Index: -1,
-	}
+func InvertedBox[T Coord]() Box[T] {
+	min, max := MinMaxValueOfType[T]()
+	return Box[T]{MinX: max, MinY: max, MaxX: min, MaxY: min, Index: -1}
 }
 
-func InvertedBox64() Box[float64] {
-	return Box[float64]{
-		MinX:  math.MaxFloat64,
-		MinY:  math.MaxFloat64,
-		MaxX:  -math.MaxFloat64,
-		MaxY:  -math.MaxFloat64,
-		Index: -1,
-	}
-}
-
-func InvertedBox[T float32 | float64]() Box[T] {
-	var t T
-	switch any(t).(type) {
-	case float32:
-		return any(InvertedBox32()).(Box[T])
-	case float64:
-		return any(InvertedBox64()).(Box[T])
-	default:
-		panic("Unsupported float type")
-	}
-}
-
-func (a *Box[float32]) PositiveUnion(b *Box[float32]) bool {
+func (a *Box[T]) PositiveUnion(b *Box[T]) bool {
 	return b.MaxX >= a.MinX && b.MinX <= a.MaxX && b.MaxY >= a.MinY && b.MinY <= a.MaxY
 }
 
@@ -154,7 +154,7 @@ func sortValuesAndBoxes[TBox any](values []uint32, boxes []TBox, left, right int
 }
 
 // Finish builds the spatial index, so that it can be queried.
-func finishIndexBuild[TFloat float32 | float64](nodeSize int, boxes []Box[TFloat], bounds Box[TFloat]) (int, []int, []uint32, []Box[TFloat]) {
+func finishIndexBuild[T Coord](nodeSize int, boxes []Box[T], bounds Box[T]) (int, []int, []uint32, []Box[T]) {
 	if nodeSize < 2 {
 		nodeSize = 2
 	}
@@ -175,17 +175,17 @@ func finishIndexBuild[TFloat float32 | float64](nodeSize int, boxes []Box[TFloat
 		}
 	}
 
-	width := bounds.MaxX - bounds.MinX
-	height := bounds.MaxY - bounds.MinY
+	width := float64(bounds.MaxX - bounds.MinX)
+	height := float64(bounds.MaxY - bounds.MinY)
 
 	hilbertValues := make([]uint32, len(boxes))
-	hilbertMax := TFloat((1 << 16) - 1)
+	hilbertMax := float64((1 << 16) - 1)
 
 	// map item centers into Hilbert coordinate space and calculate Hilbert values
 	for i := 0; i < len(boxes); i++ {
 		b := boxes[i]
-		x := uint32(hilbertMax * ((b.MinX+b.MaxX)/2 - bounds.MinX) / width)
-		y := uint32(hilbertMax * ((b.MinY+b.MaxY)/2 - bounds.MinY) / height)
+		x := uint32(hilbertMax * (((float64(b.MinX)+float64(b.MaxX))/2 - float64(bounds.MinX)) / width))
+		y := uint32(hilbertMax * (((float64(b.MinY)+float64(b.MaxY))/2 - float64(bounds.MinY)) / height))
 		hilbertValues[i] = hilbertXYToIndex(16, x, y)
 	}
 
@@ -201,7 +201,7 @@ func finishIndexBuild[TFloat float32 | float64](nodeSize int, boxes []Box[TFloat
 
 		// generate a parent node for each block of consecutive <nodeSize> nodes
 		for pos < end {
-			nodeBox := InvertedBox[TFloat]()
+			nodeBox := InvertedBox[T]()
 			nodeBox.Index = pos
 
 			// calculate bbox for the new node
@@ -224,7 +224,7 @@ func finishIndexBuild[TFloat float32 | float64](nodeSize int, boxes []Box[TFloat
 
 // searchInTree accepts a 'results' as input. If you are performing millions of queries,
 // then reusing a 'results' slice will reduce the number of allocations.
-func searchInTree[TFloat float32 | float64](nodeSize, numItems int, levelBounds []int, boxes []Box[TFloat], minX, minY, maxX, maxY TFloat, results []int) []int {
+func searchInTree[T Coord](nodeSize, numItems int, levelBounds []int, boxes []Box[T], minX, minY, maxX, maxY T, results []int) []int {
 	results = results[:0]
 	if len(levelBounds) == 0 {
 		// Must call Finish()
