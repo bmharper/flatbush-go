@@ -1,4 +1,4 @@
-module github.com/bmharper/flatbush-go
+module github.com/bmharper/flatbush-go/v2
 
 go 1.22
 
